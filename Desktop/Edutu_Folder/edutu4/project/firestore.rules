@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users can read and write their own documents
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // Admins can read all user documents
+      allow read: if request.auth != null && 
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isActive == true;
+    }
+
+    // Goals - users can manage their own, admins can view all
+    match /goals/{goalId} {
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
+      // Admins can read all goals for moderation
+      allow read: if request.auth != null && 
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isActive == true;
+      // Admins can update goals for moderation (approve/reject)
+      allow update: if request.auth != null && 
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isActive == true;
+    }
+
+    // Admin collection - only admins can read/write
+    match /admins/{userId} {
+      allow read: if request.auth != null && 
+        (request.auth.uid == userId ||
+         (exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == "admin"));
+      // Only existing admins can create new admins
+      allow write: if request.auth != null && 
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == "admin" &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isActive == true;
+    }
+    
+    // Moderation queue - admins and moderators can access
+    match /moderation_queue/{moderationId} {
+      // Users can create moderation requests for their own content
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.submittedBy;
+      // Admins and moderators can read and update
+      allow read, update: if request.auth != null && 
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isActive == true;
+    }
+
+    // User activities - users can read/write their own
+    match /activities/{activityId} {
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
+      // Admins can read all activities for analytics
+      allow read: if request.auth != null && 
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isActive == true;
+    }
+
+    // User streaks - users can read/write their own
+    match /streaks/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // Admins can read all streaks for analytics
+      allow read: if request.auth != null && 
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isActive == true;
+    }
+
+    // Default rule - deny all access unless explicitly allowed
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

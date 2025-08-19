@@ -1,0 +1,579 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.CVService = void 0;
+const admin = __importStar(require("firebase-admin"));
+const logger_1 = require("../utils/logger");
+const errors_1 = require("../utils/errors");
+class CVService {
+    constructor() {
+        this.db = admin.firestore();
+        this.storage = admin.storage();
+    }
+    /**
+     * Create a new CV record
+     */
+    async createCV(cvData) {
+        try {
+            const cv = Object.assign(Object.assign({}, cvData), { status: 'completed', uploadedAt: cvData.uploadedAt || new Date(), tags: cvData.tags || [] });
+            const docRef = await this.db.collection('cvs').add(cv);
+            logger_1.logger.info('CV created successfully', {
+                cvId: docRef.id,
+                userId: cv.userId,
+                originalName: cv.originalName
+            });
+            return Object.assign({ id: docRef.id }, cv);
+        }
+        catch (error) {
+            logger_1.logger.error('Failed to create CV', {
+                userId: cvData.userId,
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+            throw new errors_1.AppError('Failed to create CV record');
+        }
+    }
+    /**
+     * Get CV by ID for a specific user
+     */
+    async getCVById(cvId, userId) {
+        try {
+            const doc = await this.db.collection('cvs').doc(cvId).get();
+            if (!doc.exists) {
+                return null;
+            }
+            const cv = doc.data();
+            // Verify ownership
+            if (cv.userId !== userId) {
+                throw new errors_1.AppError('Access denied', 403);
+            }
+            return Object.assign({ id: doc.id }, cv);
+        }
+        catch (error) {
+            logger_1.logger.error('Failed to get CV', { cvId, userId, error });
+            if (error instanceof errors_1.AppError) {
+                throw error;
+            }
+            throw new errors_1.AppError('Failed to retrieve CV');
+        }
+    }
+    /**
+     * Get all CVs for a user
+     */
+    async getUserCVs(userId, limit = 50) {
+        try {
+            const snapshot = await this.db
+                .collection('cvs')
+                .where('userId', '==', userId)
+                .orderBy('uploadedAt', 'desc')
+                .limit(limit)
+                .get();
+            return snapshot.docs.map(doc => (Object.assign({ id: doc.id }, doc.data())));
+        }
+        catch (error) {
+            logger_1.logger.error('Failed to get user CVs', { userId, error });
+            throw new errors_1.AppError('Failed to retrieve CVs');
+        }
+    }
+    /**
+     * Update CV
+     */
+    async updateCV(cvId, userId, updates) {
+        try {
+            const cvRef = this.db.collection('cvs').doc(cvId);
+            const doc = await cvRef.get();
+            if (!doc.exists) {
+                throw new errors_1.NotFoundError('CV');
+            }
+            const cv = doc.data();
+            if (cv.userId !== userId) {
+                throw new errors_1.AppError('Access denied', 403);
+            }
+            const updatedData = Object.assign(Object.assign({}, updates), { updatedAt: new Date() });
+            await cvRef.update(updatedData);
+            const updatedDoc = await cvRef.get();
+            return Object.assign({ id: updatedDoc.id }, updatedDoc.data());
+        }
+        catch (error) {
+            logger_1.logger.error('Failed to update CV', { cvId, userId, error });
+            if (error instanceof errors_1.AppError) {
+                throw error;
+            }
+            throw new errors_1.AppError('Failed to update CV');
+        }
+    }
+    /**
+     * Delete CV
+     */
+    async deleteCV(cvId, userId) {
+        try {
+            const cvRef = this.db.collection('cvs').doc(cvId);
+            const doc = await cvRef.get();
+            if (!doc.exists) {
+                return false;
+            }
+            const cv = doc.data();
+            if (cv.userId !== userId) {
+                throw new errors_1.AppError('Access denied', 403);
+            }
+            // Delete associated files from storage
+            try {
+                const bucket = this.storage.bucket();
+                const filePath = `cv-documents/${userId}/${cv.fileId}`;
+                await bucket.file(filePath).delete();
+                if (cv.fileMetadata.thumbnailUrl) {
+                    const thumbnailPath = `cv-documents/${userId}/thumbnails/${cv.fileId}_thumb.jpg`;
+                    await bucket.file(thumbnailPath).delete();
+                }
+            }
+            catch (storageError) {
+                logger_1.logger.warn('Failed to delete files from storage', { cvId, error: storageError });
+            }
+            // Delete CV document
+            await cvRef.delete();
+            // Delete associated optimizations and analyses
+            await this.deleteAssociatedData(cvId, userId);
+            logger_1.logger.info('CV deleted successfully', { cvId, userId });
+            return true;
+        }
+        catch (error) {
+            logger_1.logger.error('Failed to delete CV', { cvId, userId, error });
+            if (error instanceof errors_1.AppError) {
+                throw error;
+            }
+            throw new errors_1.AppError('Failed to delete CV');
+        }
+    }
+    /**
+     * Save optimization results
+     */
+    async saveOptimization(cvId, userId, optimization) {
+        try {
+            const optimizationData = Object.assign(Object.assign({}, optimization), { cvId,
+                userId, createdAt: new Date(), isApplied: false });
+            const docRef = await this.db.collection('optimizations').add(optimizationData);
+            logger_1.logger.info('Optimization saved successfully', {
+                optimizationId: docRef.id,
+                cvId,
+                userId
+            });
+            return Object.assign({ id: docRef.id }, optimizationData);
+        }
+        catch (error) {
+            logger_1.logger.error('Failed to save optimization', { cvId, userId, error });
+            throw new errors_1.AppError('Failed to save optimization results');
+        }
+    }
+    /**
+     * Get optimization history
+     */
+    async getOptimizationHistory(cvId, userId) {
+        try {
+            const snapshot = await this.db
+                .collection('optimizations')
+                .where('cvId', '==', cvId)
+                .where('userId', '==', userId)
+                .orderBy('createdAt', 'desc')
+                .get();
+            return snapshot.docs.map(doc => (Object.assign({ id: doc.id }, doc.data())));
+        }
+        catch (error) {
+            logger_1.logger.error('Failed to get optimization history', { cvId, userId, error });
+            throw new errors_1.AppError('Failed to retrieve optimization history');
+        }
+    }
+    /**
+     * Get optimization by ID
+     */
+    async getOptimizationById(optimizationId, userId) {
+        try {
+            const doc = await this.db.collection('optimizations').doc(optimizationId).get();
+            if (!doc.exists) {
+                return null;
+            }
+            const optimization = doc.data();
+            if (optimization.userId !== userId) {
+                throw new errors_1.AppError('Access denied', 403);
+            }
+            return Object.assign({ id: doc.id }, optimization);
+        }
+        catch (error) {
+            logger_1.logger.error('Failed to get optimization', { optimizationId, userId, error });
+            if (error instanceof errors_1.AppError) {
+                throw error;
+            }
+            return null;
+        }
+    }
+    /**
+     * Save ATS analysis
+     */
+    async saveATSAnalysis(cvId, userId, analysis) {
+        try {
+            const analysisData = Object.assign(Object.assign({}, analysis), { cvId,
+                userId, createdAt: new Date() });
+            const docRef = await this.db.collection('ats_analyses').add(analysisData);
+            logger_1.logger.info('ATS analysis saved successfully', {
+                analysisId: docRef.id,
+                cvId,
+                userId
+            });
+            return Object.assign({ id: docRef.id }, analysisData);
+        }
+        catch (error) {
+            logger_1.logger.error('Failed to save ATS analysis', { cvId, userId, error });
+            throw new errors_1.AppError('Failed to save ATS analysis results');
+        }
+    }
+    /**
+     * Get ATS analysis history
+     */
+    async getATSAnalysisHistory(cvId, userId) {
+        try {
+            const snapshot = await this.db
+                .collection('ats_analyses')
+                .where('cvId', '==', cvId)
+                .where('userId', '==', userId)
+                .orderBy('createdAt', 'desc')
+                .get();
+            return snapshot.docs.map(doc => (Object.assign({ id: doc.id }, doc.data())));
+        }
+        catch (error) {
+            logger_1.logger.error('Failed to get ATS analysis history', { cvId, userId, error });
+            throw new errors_1.AppError('Failed to retrieve ATS analysis history');
+        }
+    }
+    /**
+     * Get ATS analysis by ID
+     */
+    async getATSAnalysisById(analysisId, userId) {
+        try {
+            const doc = await this.db.collection('ats_analyses').doc(analysisId).get();
+            if (!doc.exists) {
+                return null;
+            }
+            const analysis = doc.data();
+            if (analysis.userId !== userId) {
+                throw new errors_1.AppError('Access denied', 403);
+            }
+            return Object.assign({ id: doc.id }, analysis);
+        }
+        catch (error) {
+            logger_1.logger.error('Failed to get ATS analysis', { analysisId, userId, error });
+            if (error instanceof errors_1.AppError) {
+                throw error;
+            }
+            return null;
+        }
+    }
+    /**
+     * Apply optimizations to CV
+     */
+    async applyOptimizations(cvId, userId, optimizationId, selectedSuggestions) {
+        try {
+            // This is a simplified implementation
+            // In a full production system, you would implement sophisticated text processing
+            const optimization = await this.getOptimizationById(optimizationId, userId);
+            if (!optimization) {
+                throw new errors_1.NotFoundError('Optimization');
+            }
+            const appliedOptimization = {
+                optimizationId,
+                appliedSuggestions: selectedSuggestions,
+                appliedAt: new Date(),
+                status: 'applied'
+            };
+            // Update optimization record
+            await this.db.collection('optimizations').doc(optimizationId).update({
+                isApplied: true,
+                appliedAt: new Date()
+            });
+            return appliedOptimization;
+        }
+        catch (error) {
+            logger_1.logger.error('Failed to apply optimizations', { cvId, userId, optimizationId, error });
+            throw new errors_1.AppError('Failed to apply optimizations');
+        }
+    }
+    /**
+     * Generate ATS optimized CV
+     */
+    async generateATSOptimizedCV(cvId, analysisId, userId, selectedFixes) {
+        try {
+            const cv = await this.getCVById(cvId, userId);
+            const analysis = await this.getATSAnalysisById(analysisId, userId);
+            if (!cv || !analysis) {
+                throw new errors_1.NotFoundError('CV or ATS analysis');
+            }
+            // Create optimized version
+            const optimizedCV = Object.assign(Object.assign({}, cv), { id: undefined, originalName: `${cv.originalName}_ATS_Optimized`, isATSOptimized: true, parentCVId: cvId, atsImprovements: selectedFixes || analysis.issues.map(i => i.fix), createdAt: new Date() });
+            const newCV = await this.createCV(optimizedCV);
+            return newCV;
+        }
+        catch (error) {
+            logger_1.logger.error('Failed to generate ATS optimized CV', { cvId, analysisId, userId, error });
+            throw new errors_1.AppError('Failed to generate ATS optimized CV');
+        }
+    }
+    /**
+     * Compare CV versions
+     */
+    async compareVersions(cvId, optimizationId, userId) {
+        try {
+            const cv = await this.getCVById(cvId, userId);
+            const optimization = await this.getOptimizationById(optimizationId, userId);
+            if (!cv || !optimization) {
+                throw new errors_1.NotFoundError('CV or optimization');
+            }
+            return {
+                original: {
+                    text: cv.extractedText,
+                    wordCount: cv.extractedText.split(/\s+/).length,
+                    score: 'baseline'
+                },
+                optimized: {
+                    score: optimization.overallScore,
+                    improvements: optimization.suggestions.length,
+                    keywordImprovements: optimization.keywordAnalysis.missingKeywords.length
+                },
+                comparison: {
+                    scoreImprovement: optimization.overallScore - 70, // Assuming baseline of 70
+                    suggestionsApplied: optimization.isApplied ? optimization.suggestions.length : 0
+                }
+            };
+        }
+        catch (error) {
+            logger_1.logger.error('Failed to compare CV versions', { cvId, optimizationId, userId, error });
+            throw new errors_1.AppError('Failed to compare CV versions');
+        }
+    }
+    /**
+     * Generate optimized download
+     */
+    async generateOptimizedDownload(cvId, optimizationId, userId, format) {
+        try {
+            // This would typically generate a new file with applied optimizations
+            const fileName = `optimized_cv_${Date.now()}.${format}`;
+            const downloadUrl = `https://storage.googleapis.com/your-bucket/optimized/${userId}/${fileName}`;
+            return {
+                downloadUrl,
+                fileName,
+                format,
+                expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+            };
+        }
+        catch (error) {
+            logger_1.logger.error('Failed to generate optimized download', { cvId, optimizationId, userId, format, error });
+            throw new errors_1.AppError('Failed to generate optimized download');
+        }
+    }
+    /**
+     * Get optimization analytics
+     */
+    async getOptimizationAnalytics(userId) {
+        try {
+            const [optimizations, atsAnalyses] = await Promise.all([
+                this.db.collection('optimizations').where('userId', '==', userId).get(),
+                this.db.collection('ats_analyses').where('userId', '==', userId).get()
+            ]);
+            const optimizationData = optimizations.docs.map(doc => doc.data());
+            const atsData = atsAnalyses.docs.map(doc => doc.data());
+            return {
+                totalOptimizations: optimizations.size,
+                totalATSAnalyses: atsAnalyses.size,
+                averageOptimizationScore: optimizationData.reduce((sum, opt) => sum + (opt.overallScore || 0), 0) / optimizationData.length || 0,
+                averageATSScore: atsData.reduce((sum, ats) => sum + (ats.atsScore || 0), 0) / atsData.length || 0,
+                improvementTrend: this.calculateImprovementTrend(optimizationData, atsData),
+                mostCommonIssues: this.getMostCommonIssues(optimizationData, atsData)
+            };
+        }
+        catch (error) {
+            logger_1.logger.error('Failed to get optimization analytics', { userId, error });
+            throw new errors_1.AppError('Failed to retrieve optimization analytics');
+        }
+    }
+    /**
+     * Get ATS analytics
+     */
+    async getATSAnalytics(userId) {
+        try {
+            const snapshot = await this.db
+                .collection('ats_analyses')
+                .where('userId', '==', userId)
+                .orderBy('createdAt', 'desc')
+                .get();
+            const analyses = snapshot.docs.map(doc => doc.data());
+            return {
+                totalAnalyses: analyses.length,
+                averageScore: analyses.reduce((sum, analysis) => sum + analysis.atsScore, 0) / analyses.length || 0,
+                scoreDistribution: this.calculateScoreDistribution(analyses),
+                commonIssues: this.getCommonATSIssues(analyses),
+                trend: this.calculateATSTrend(analyses)
+            };
+        }
+        catch (error) {
+            logger_1.logger.error('Failed to get ATS analytics', { userId, error });
+            throw new errors_1.AppError('Failed to retrieve ATS analytics');
+        }
+    }
+    /**
+     * Save ATS simulation
+     */
+    async saveATSSimulation(cvId, userId, simulation) {
+        try {
+            const simulationData = Object.assign(Object.assign({}, simulation), { cvId,
+                userId, createdAt: new Date() });
+            const docRef = await this.db.collection('ats_simulations').add(simulationData);
+            return Object.assign({ id: docRef.id }, simulationData);
+        }
+        catch (error) {
+            logger_1.logger.error('Failed to save ATS simulation', { cvId, userId, error });
+            throw new errors_1.AppError('Failed to save ATS simulation');
+        }
+    }
+    /**
+     * Delete associated data when CV is deleted
+     */
+    async deleteAssociatedData(cvId, userId) {
+        try {
+            const batch = this.db.batch();
+            // Delete optimizations
+            const optimizations = await this.db
+                .collection('optimizations')
+                .where('cvId', '==', cvId)
+                .where('userId', '==', userId)
+                .get();
+            optimizations.docs.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+            // Delete ATS analyses
+            const atsAnalyses = await this.db
+                .collection('ats_analyses')
+                .where('cvId', '==', cvId)
+                .where('userId', '==', userId)
+                .get();
+            atsAnalyses.docs.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+            await batch.commit();
+        }
+        catch (error) {
+            logger_1.logger.warn('Failed to delete associated data', { cvId, userId, error });
+        }
+    }
+    /**
+     * Helper methods
+     */
+    calculateImprovementTrend(optimizations, atsAnalyses) {
+        // Simplified trend calculation
+        if (optimizations.length < 2)
+            return 'insufficient_data';
+        const recent = optimizations.slice(0, Math.ceil(optimizations.length / 2));
+        const older = optimizations.slice(Math.ceil(optimizations.length / 2));
+        const recentAvg = recent.reduce((sum, opt) => sum + (opt.overallScore || 0), 0) / recent.length;
+        const olderAvg = older.reduce((sum, opt) => sum + (opt.overallScore || 0), 0) / older.length;
+        return recentAvg > olderAvg ? 'improving' : recentAvg < olderAvg ? 'declining' : 'stable';
+    }
+    getMostCommonIssues(optimizations, atsAnalyses) {
+        const issues = [];
+        optimizations.forEach(opt => {
+            if (opt.suggestions) {
+                opt.suggestions.forEach((suggestion) => {
+                    issues.push(suggestion.category);
+                });
+            }
+        });
+        atsAnalyses.forEach(ats => {
+            if (ats.issues) {
+                ats.issues.forEach((issue) => {
+                    issues.push(issue.type);
+                });
+            }
+        });
+        const frequency = {};
+        issues.forEach(issue => {
+            frequency[issue] = (frequency[issue] || 0) + 1;
+        });
+        return Object.keys(frequency)
+            .sort((a, b) => frequency[b] - frequency[a])
+            .slice(0, 5);
+    }
+    calculateScoreDistribution(analyses) {
+        const distribution = { excellent: 0, good: 0, fair: 0, poor: 0 };
+        analyses.forEach(analysis => {
+            const score = analysis.atsScore;
+            if (score >= 85)
+                distribution.excellent++;
+            else if (score >= 70)
+                distribution.good++;
+            else if (score >= 50)
+                distribution.fair++;
+            else
+                distribution.poor++;
+        });
+        return distribution;
+    }
+    getCommonATSIssues(analyses) {
+        const issues = [];
+        analyses.forEach(analysis => {
+            if (analysis.issues) {
+                analysis.issues.forEach((issue) => {
+                    issues.push(issue.issue);
+                });
+            }
+        });
+        const frequency = {};
+        issues.forEach(issue => {
+            frequency[issue] = (frequency[issue] || 0) + 1;
+        });
+        return Object.keys(frequency)
+            .sort((a, b) => frequency[b] - frequency[a])
+            .slice(0, 10);
+    }
+    calculateATSTrend(analyses) {
+        if (analyses.length < 2)
+            return { trend: 'insufficient_data' };
+        const scores = analyses.map(a => a.atsScore);
+        const recentAvg = scores.slice(0, Math.ceil(scores.length / 2))
+            .reduce((sum, score) => sum + score, 0) / Math.ceil(scores.length / 2);
+        const olderAvg = scores.slice(Math.ceil(scores.length / 2))
+            .reduce((sum, score) => sum + score, 0) / Math.floor(scores.length / 2);
+        return {
+            trend: recentAvg > olderAvg ? 'improving' : recentAvg < olderAvg ? 'declining' : 'stable',
+            change: Math.round((recentAvg - olderAvg) * 10) / 10
+        };
+    }
+}
+exports.CVService = CVService;
+//# sourceMappingURL=cvService.js.map

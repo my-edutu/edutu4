@@ -1,0 +1,20 @@
+{
+  "name": "opportunities-aggregator-production",
+  "version": "1.0.0",
+  "description": "Production package for Edutu Opportunities Aggregator",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "node dist/index.js",
+    "health-check": "node -e \"const http = require('http'); http.get('http://localhost:3000/api/health', (res) => { let data = ''; res.on('data', chunk => data += chunk); res.on('end', () => { const result = JSON.parse(data); console.log('Health:', result.status); process.exit(result.status === 'healthy' || result.status === 'degraded' ? 0 : 1); }); }).on('error', () => { console.log('Health: down'); process.exit(1); });\""
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "axios": "^1.6.0",
+    "node-cron": "^3.0.3",
+    "winston": "^3.11.0",
+    "dotenv": "^16.3.1",
+    "express-rate-limit": "^7.1.5"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(npm install)",
+      "Bash(npm run dev:enhanced:*)",
+      "Bash(npm run dev:*)",
+      "Bash(set PORT=3001)",
+      "Bash(node:*)",
+      "Bash(curl:*)",
+      "Bash(npm run build:*)",
+      "Bash(echo $PORT)",
+      "Bash(set PORT=3000)",
+      "Bash(taskkill:*)",
+      "Bash(npx claude-code-templates:*)",
+      "mcp__figma__add_figma_file"
+    ],
+    "deny": []
+  }
+}

@@ -1,0 +1,380 @@
+// Enhanced Firestore Security Rules for RAG-Enabled Edutu Backend
+// Supports chat history, embeddings, and enhanced user interactions
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions for authentication and authorization
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+             request.auth.token.admin == true;
+    }
+    
+    function isValidUser() {
+      return isAuthenticated() && 
+             request.auth.uid != null &&
+             request.auth.uid.size() > 0;
+    }
+    
+    function isServiceAccount() {
+      return isAuthenticated() && 
+             request.auth.token.firebase.sign_in_provider == 'custom' &&
+             request.auth.token.service_account == true;
+    }
+    
+    // Rate limiting helper (basic implementation)
+    function withinRateLimit() {
+      // This is a simplified rate limiting check
+      // In production, you might want more sophisticated rate limiting
+      return true;
+    }
+
+    // User profiles and preferences
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin() || isServiceAccount();
+      allow write: if isOwner(userId) || isAdmin() || isServiceAccount();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isOwner(userId) || isServiceAccount();
+      allow delete: if isAdmin();
+    }
+
+    // Chat messages - enhanced for RAG system
+    match /chatMessages/{messageId} {
+      allow read: if isAuthenticated() && 
+                     (isOwner(resource.data.userId) || isAdmin() || isServiceAccount());
+      
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.userId) &&
+                       withinRateLimit() &&
+                       // Validate message structure
+                       request.resource.data.keys().hasAll(['messageId', 'sessionId', 'userId', 'type', 'content', 'timestamp']) &&
+                       request.resource.data.type in ['user', 'assistant'] &&
+                       request.resource.data.content is string &&
+                       request.resource.data.content.size() <= 4000 &&
+                       request.resource.data.userId == request.auth.uid;
+      
+      allow update: if isServiceAccount() || isAdmin();
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // Chat feedback for quality improvement
+    match /chatFeedback/{feedbackId} {
+      allow read: if isAdmin() || isServiceAccount();
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.userId) &&
+                       // Validate feedback structure
+                       request.resource.data.keys().hasAll(['messageId', 'userId', 'rating', 'timestamp']) &&
+                       request.resource.data.rating is number &&
+                       request.resource.data.rating >= 1 && request.resource.data.rating <= 5;
+      allow update: if false; // No updates to feedback
+      allow delete: if isAdmin();
+    }
+
+    // Scholarships/Opportunities - read-only for users, write for service
+    match /scholarships/{scholarshipId} {
+      allow read: if isAuthenticated();
+      allow write: if isServiceAccount() || isAdmin();
+      allow create: if isServiceAccount() || isAdmin();
+      allow update: if isServiceAccount() || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // User-specific roadmaps
+    match /userRoadmaps/{roadmapId} {
+      allow read: if isAuthenticated() && 
+                     (isOwner(resource.data.userId) || isAdmin() || isServiceAccount());
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.userId);
+      allow update: if isAuthenticated() && 
+                       (isOwner(resource.data.userId) || isServiceAccount());
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // Community shared roadmaps
+    match /communityRoadmaps/{roadmapId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.createdBy);
+      allow update: if isAuthenticated() && 
+                       (isOwner(resource.data.createdBy) || isAdmin());
+      allow delete: if isOwner(resource.data.createdBy) || isAdmin();
+    }
+
+    // User goals and progress tracking
+    match /goals/{goalId} {
+      allow read: if isAuthenticated() && 
+                     (isOwner(resource.data.userId) || isAdmin() || isServiceAccount());
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.userId);
+      allow update: if isAuthenticated() && 
+                       (isOwner(resource.data.userId) || isServiceAccount());
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // User activity tracking for personalization
+    match /userActivity/{activityId} {
+      allow read: if isAuthenticated() && 
+                     (isOwner(resource.data.userId) || isAdmin() || isServiceAccount());
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.userId) ||
+                       isServiceAccount();
+      allow update: if isServiceAccount() || isAdmin();
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // User metrics and analytics
+    match /userMetrics/{userId} {
+      allow read: if isOwner(userId) || isAdmin() || isServiceAccount();
+      allow write: if isServiceAccount() || isAdmin();
+      allow create: if isServiceAccount();
+      allow update: if isServiceAccount() || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Notifications
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && 
+                     (isOwner(resource.data.userId) || isAdmin() || isServiceAccount());
+      allow create: if isServiceAccount() || isAdmin() ||
+                       (isAuthenticated() && isOwner(request.resource.data.userId));
+      allow update: if isOwner(resource.data.userId) || isServiceAccount() || isAdmin();
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // System logs and monitoring - service account and admin only
+    match /embeddingLogs/{logId} {
+      allow read: if isAdmin() || isServiceAccount();
+      allow write: if isServiceAccount() || isAdmin();
+    }
+
+    match /scraperLogs/{logId} {
+      allow read: if isAdmin() || isServiceAccount();
+      allow write: if isServiceAccount() || isAdmin();
+    }
+
+    match /systemStats/{statId} {
+      allow read: if isAdmin() || isServiceAccount();
+      allow write: if isServiceAccount() || isAdmin();
+    }
+
+    // Error logs for debugging
+    match /errorLogs/{errorId} {
+      allow read: if isAdmin() || isServiceAccount();
+      allow write: if isServiceAccount() || isAdmin();
+    }
+
+    // API usage logs for monitoring
+    match /apiUsageLogs/{logId} {
+      allow read: if isAdmin() || isServiceAccount();
+      allow write: if isServiceAccount() || isAdmin();
+    }
+
+    // User feedback and support
+    match /userFeedback/{feedbackId} {
+      allow read: if isAdmin() || isServiceAccount() ||
+                     (isAuthenticated() && isOwner(resource.data.userId));
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.userId);
+      allow update: if isAdmin() || isServiceAccount();
+      allow delete: if isAdmin();
+    }
+
+    // Feature flags and configuration
+    match /featureFlags/{flagId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /appConfig/{configId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Content moderation
+    match /moderationQueue/{itemId} {
+      allow read: if isAdmin() || isServiceAccount();
+      allow write: if isServiceAccount() || isAdmin();
+    }
+
+    // User sessions for analytics
+    match /userSessions/{sessionId} {
+      allow read: if isAuthenticated() && 
+                     (isOwner(resource.data.userId) || isAdmin() || isServiceAccount());
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.userId) ||
+                       isServiceAccount();
+      allow update: if isServiceAccount() || isAdmin() ||
+                       (isAuthenticated() && isOwner(resource.data.userId));
+      allow delete: if isAdmin();
+    }
+
+    // Knowledge base entries (for RAG context)
+    match /knowledgeBase/{entryId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isServiceAccount();
+    }
+
+    // FAQ and help content
+    match /faqEntries/{faqId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isServiceAccount();
+    }
+
+    // University and institution data
+    match /institutions/{institutionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isServiceAccount();
+    }
+
+    // Course and program information
+    match /programs/{programId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isServiceAccount();
+    }
+
+    // Success stories and testimonials
+    match /successStories/{storyId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.authorId);
+      allow update: if isAuthenticated() && 
+                       (isOwner(resource.data.authorId) || isAdmin());
+      allow delete: if isOwner(resource.data.authorId) || isAdmin();
+    }
+
+    // Mentor profiles and connections
+    match /mentors/{mentorId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.userId);
+      allow update: if isAuthenticated() && 
+                       (isOwner(resource.data.userId) || isAdmin());
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    match /mentorConnections/{connectionId} {
+      allow read: if isAuthenticated() && 
+                     (isOwner(resource.data.menteeId) || 
+                      isOwner(resource.data.mentorId) || 
+                      isAdmin() || isServiceAccount());
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.menteeId);
+      allow update: if isAuthenticated() && 
+                       (isOwner(resource.data.menteeId) || 
+                        isOwner(resource.data.mentorId) || 
+                        isServiceAccount());
+      allow delete: if isOwner(resource.data.menteeId) || 
+                       isOwner(resource.data.mentorId) || 
+                       isAdmin();
+    }
+
+    // Application tracking
+    match /applications/{applicationId} {
+      allow read: if isAuthenticated() && 
+                     (isOwner(resource.data.userId) || isAdmin() || isServiceAccount());
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.userId);
+      allow update: if isAuthenticated() && 
+                       (isOwner(resource.data.userId) || isServiceAccount());
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // Event and webinar information
+    match /events/{eventId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isServiceAccount();
+    }
+
+    match /eventRegistrations/{registrationId} {
+      allow read: if isAuthenticated() && 
+                     (isOwner(resource.data.userId) || isAdmin() || isServiceAccount());
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.userId);
+      allow update: if isAuthenticated() && 
+                       (isOwner(resource.data.userId) || isServiceAccount());
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // Job and internship postings
+    match /jobPostings/{jobId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isServiceAccount();
+    }
+
+    // User job applications
+    match /jobApplications/{applicationId} {
+      allow read: if isAuthenticated() && 
+                     (isOwner(resource.data.userId) || isAdmin() || isServiceAccount());
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.userId);
+      allow update: if isAuthenticated() && 
+                       (isOwner(resource.data.userId) || isServiceAccount());
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // Study groups and peer connections
+    match /studyGroups/{groupId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.createdBy);
+      allow update: if isAuthenticated() && 
+                       (isOwner(resource.data.createdBy) || 
+                        request.auth.uid in resource.data.members || 
+                        isAdmin());
+      allow delete: if isOwner(resource.data.createdBy) || isAdmin();
+    }
+
+    match /studyGroupMembers/{membershipId} {
+      allow read: if isAuthenticated() && 
+                     (isOwner(resource.data.userId) || isAdmin() || isServiceAccount());
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.userId);
+      allow update: if isAuthenticated() && 
+                       (isOwner(resource.data.userId) || isServiceAccount());
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // Skill assessments and certifications
+    match /skillAssessments/{assessmentId} {
+      allow read: if isAuthenticated() && 
+                     (isOwner(resource.data.userId) || isAdmin() || isServiceAccount());
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.userId);
+      allow update: if isAuthenticated() && 
+                       (isOwner(resource.data.userId) || isServiceAccount());
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // Resource library (documents, guides, templates)
+    match /resourceLibrary/{resourceId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isServiceAccount();
+    }
+
+    // User resource bookmarks
+    match /userBookmarks/{bookmarkId} {
+      allow read: if isAuthenticated() && 
+                     (isOwner(resource.data.userId) || isAdmin() || isServiceAccount());
+      allow create: if isAuthenticated() && 
+                       isOwner(request.resource.data.userId);
+      allow update: if isAuthenticated() && 
+                       (isOwner(resource.data.userId) || isServiceAccount());
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // Default deny rule for any other collection
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

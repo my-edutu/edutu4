@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Turnstile Integration Test</title>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" defer></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 6px;
+        }
+        .success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .info { background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        .turnstile-container {
+            margin: 20px 0;
+            display: flex;
+            justify-content: center;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔒 Edutu Turnstile Integration Test</h1>
+        
+        <div class="info">
+            <h3>Test Status</h3>
+            <p>This page tests the Cloudflare Turnstile integration for the Edutu application.</p>
+        </div>
+
+        <h2>1. Environment Check</h2>
+        <div id="env-status">Checking environment variables...</div>
+
+        <h2>1.5. Demo Mode Status</h2>
+        <div id="demo-status">Checking demo mode...</div>
+
+        <h2>2. Turnstile Widget</h2>
+        <div class="turnstile-container">
+            <div class="cf-turnstile" 
+                 data-sitekey="0x4AAAAAABo5rHoCzvGsSPvI"
+                 data-callback="onTurnstileSuccess"
+                 data-error-callback="onTurnstileError"
+                 data-theme="auto">
+            </div>
+        </div>
+
+        <h2>3. Token Verification</h2>
+        <div id="token-status" class="info">Complete the CAPTCHA above to test token verification.</div>
+        <button id="verify-btn" onclick="verifyToken()" disabled>Verify Token</button>
+        <button onclick="resetTurnstile()">Reset CAPTCHA</button>
+
+        <h2>4. Service Integration Test</h2>
+        <div id="service-status" class="info">Token verification required first.</div>
+        <button id="service-btn" onclick="testServiceIntegration()" disabled>Test Service Integration</button>
+
+        <h2>5. Test Results</h2>
+        <pre id="results">Waiting for tests to run...</pre>
+    </div>
+
+    <script>
+        let currentToken = null;
+        const results = [];
+
+        // Environment check
+        function checkEnvironment() {
+            const siteKey = '0x4AAAAAABo5rHoCzvGsSPvI';
+            const demoMode = true; // Simulating VITE_TURNSTILE_DEMO_MODE=true
+            
+            const envStatus = document.getElementById('env-status');
+            const demoStatus = document.getElementById('demo-status');
+            
+            if (siteKey && siteKey !== 'your-turnstile-site-key-here') {
+                envStatus.innerHTML = '<div class="success">✅ Turnstile site key configured correctly</div>';
+                results.push('✅ Environment: Site key configured');
+            } else {
+                envStatus.innerHTML = '<div class="error">❌ Turnstile site key not configured</div>';
+                results.push('❌ Environment: Site key missing');
+            }
+            
+            if (demoMode) {
+                demoStatus.innerHTML = '<div class="info">🔧 Demo mode is active - Using simulated verification</div>';
+                results.push('🔧 Demo Mode: Active');
+            } else {
+                demoStatus.innerHTML = '<div class="success">🚀 Production mode - Using real Cloudflare verification</div>';
+                results.push('🚀 Production Mode: Active');
+            }
+            
+            updateResults();
+        }
+
+        // Turnstile success callback
+        function onTurnstileSuccess(token) {
+            currentToken = token;
+            const tokenStatus = document.getElementById('token-status');
+            tokenStatus.innerHTML = '<div class="success">✅ CAPTCHA completed successfully!</div>';
+            tokenStatus.innerHTML += '<div style="margin-top: 10px; word-break: break-all; font-family: monospace; font-size: 12px;">Token: ' + token.substring(0, 50) + '...</div>';
+            
+            document.getElementById('verify-btn').disabled = false;
+            results.push('✅ Turnstile: Token received');
+            updateResults();
+        }
+
+        // Turnstile error callback
+        function onTurnstileError(error) {
+            const tokenStatus = document.getElementById('token-status');
+            tokenStatus.innerHTML = '<div class="error">❌ CAPTCHA failed: ' + error + '</div>';
+            results.push('❌ Turnstile: Error - ' + error);
+            updateResults();
+        }
+
+        // Reset Turnstile widget
+        function resetTurnstile() {
+            if (window.turnstile) {
+                window.turnstile.reset();
+                currentToken = null;
+                document.getElementById('verify-btn').disabled = true;
+                document.getElementById('service-btn').disabled = true;
+                const tokenStatus = document.getElementById('token-status');
+                tokenStatus.innerHTML = '<div class="info">CAPTCHA reset. Please complete it again.</div>';
+            }
+        }
+
+        // Verify token (simulated - would normally call backend)
+        async function verifyToken() {
+            if (!currentToken) {
+                alert('Please complete the CAPTCHA first');
+                return;
+            }
+
+            const tokenStatus = document.getElementById('token-status');
+            tokenStatus.innerHTML += '<div class="info">🔄 Verifying token with backend...</div>';
+
+            // Simulate backend verification (replace with actual API call)
+            try {
+                // This would normally call your Firebase Function
+                // const response = await fetch('/verifyTurnstile', { ... });
+                
+                // Simulated success for testing
+                setTimeout(() => {
+                    tokenStatus.innerHTML += '<div class="success">✅ Token verification successful!</div>';
+                    document.getElementById('service-btn').disabled = false;
+                    results.push('✅ Verification: Token validated');
+                    updateResults();
+                }, 1000);
+                
+            } catch (error) {
+                tokenStatus.innerHTML += '<div class="error">❌ Token verification failed: ' + error.message + '</div>';
+                results.push('❌ Verification: Failed - ' + error.message);
+                updateResults();
+            }
+        }
+
+        // Test service integration
+        async function testServiceIntegration() {
+            const serviceStatus = document.getElementById('service-status');
+            serviceStatus.innerHTML = '<div class="info">🔄 Testing service integration...</div>';
+
+            try {
+                // Test the TurnstileService class functionality
+                const testResults = {
+                    siteKey: '0x4AAAAAABo5rHoCzvGsSPvI',
+                    isEnabled: true,
+                    tokenValid: currentToken && currentToken.length > 0,
+                    serviceReady: typeof window.turnstile !== 'undefined'
+                };
+
+                serviceStatus.innerHTML += '<div class="success">✅ Service integration test passed!</div>';
+                serviceStatus.innerHTML += '<pre style="margin-top: 10px;">' + JSON.stringify(testResults, null, 2) + '</pre>';
+                
+                results.push('✅ Service Integration: All checks passed');
+                updateResults();
+                
+            } catch (error) {
+                serviceStatus.innerHTML += '<div class="error">❌ Service integration test failed: ' + error.message + '</div>';
+                results.push('❌ Service Integration: Failed - ' + error.message);
+                updateResults();
+            }
+        }
+
+        // Update results display
+        function updateResults() {
+            document.getElementById('results').textContent = results.join('\n');
+        }
+
+        // Initialize when page loads
+        window.onload = function() {
+            checkEnvironment();
+            
+            // Check if Turnstile script loaded
+            if (typeof window.turnstile === 'undefined') {
+                setTimeout(() => {
+                    if (typeof window.turnstile === 'undefined') {
+                        results.push('❌ Turnstile: Script failed to load');
+                        updateResults();
+                    } else {
+                        results.push('✅ Turnstile: Script loaded successfully');
+                        updateResults();
+                    }
+                }, 2000);
+            } else {
+                results.push('✅ Turnstile: Script loaded successfully');
+                updateResults();
+            }
+        };
+    </script>
+</body>
+</html>

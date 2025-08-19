@@ -1,0 +1,183 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions for authentication and authorization
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isValidTimestamp(timestamp) {
+      return timestamp is timestamp;
+    }
+    
+    // User metrics collection - real-time dashboard data
+    match /userMetrics/{userId} {
+      allow read, write: if isAuthenticated() && isOwner(userId);
+      
+      // Validate metric updates
+      allow update: if isAuthenticated() && isOwner(userId) &&
+        // Ensure required fields exist
+        'opportunities' in resource.data &&
+        'goalsActive' in resource.data &&
+        'avgProgress' in resource.data &&
+        'daysStreak' in resource.data &&
+        'lastActiveDate' in resource.data &&
+        'lastUpdated' in resource.data &&
+        // Validate data types and ranges
+        resource.data.opportunities is int &&
+        resource.data.goalsActive is int &&
+        resource.data.avgProgress is int &&
+        resource.data.daysStreak is int &&
+        resource.data.avgProgress >= 0 &&
+        resource.data.avgProgress <= 100 &&
+        resource.data.opportunities >= 0 &&
+        resource.data.goalsActive >= 0 &&
+        resource.data.daysStreak >= 1 &&
+        isValidTimestamp(resource.data.lastUpdated);
+    }
+    
+    // Daily metrics snapshots for historical comparisons
+    match /metricsSnapshots/{snapshotId} {
+      allow read: if isAuthenticated() && isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && isOwner(request.resource.data.userId) &&
+        // Validate snapshot structure
+        'userId' in request.resource.data &&
+        'date' in request.resource.data &&
+        'metrics' in request.resource.data &&
+        'timestamp' in request.resource.data &&
+        // Validate metrics structure
+        'opportunities' in request.resource.data.metrics &&
+        'goalsActive' in request.resource.data.metrics &&
+        'avgProgress' in request.resource.data.metrics &&
+        'daysStreak' in request.resource.data.metrics &&
+        'completedGoals' in request.resource.data.metrics &&
+        isValidTimestamp(request.resource.data.timestamp);
+      
+      // Prevent unauthorized updates to snapshots
+      allow update: if false;
+      allow delete: if isAuthenticated() && isOwner(resource.data.userId);
+    }
+    
+    // Streak events for real-time streak tracking
+    match /streakEvents/{eventId} {
+      allow read: if isAuthenticated() && isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && isOwner(request.resource.data.userId) &&
+        // Validate event structure
+        'userId' in request.resource.data &&
+        'date' in request.resource.data &&
+        'activityType' in request.resource.data &&
+        'timestamp' in request.resource.data &&
+        // Validate activity types
+        request.resource.data.activityType in ['goal_created', 'goal_updated', 'task_completed', 'login'] &&
+        isValidTimestamp(request.resource.data.timestamp);
+      
+      // Prevent updates to streak events (immutable)
+      allow update: if false;
+      allow delete: if isAuthenticated() && isOwner(resource.data.userId);
+    }
+    
+    // User goals subcollection
+    match /users/{userId}/goals/{goalId} {
+      allow read, write: if isAuthenticated() && isOwner(userId);
+      
+      // Validate goal structure on create/update
+      allow create, update: if isAuthenticated() && isOwner(userId) &&
+        'title' in request.resource.data &&
+        'status' in request.resource.data &&
+        'progress' in request.resource.data &&
+        'category' in request.resource.data &&
+        'createdAt' in request.resource.data &&
+        'updatedAt' in request.resource.data &&
+        // Validate data types and constraints
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.status in ['active', 'completed', 'paused', 'cancelled'] &&
+        request.resource.data.progress is number &&
+        request.resource.data.progress >= 0 &&
+        request.resource.data.progress <= 100 &&
+        request.resource.data.category is string &&
+        isValidTimestamp(request.resource.data.createdAt) &&
+        isValidTimestamp(request.resource.data.updatedAt);
+    }
+    
+    // User opportunities subcollection
+    match /users/{userId}/opportunities/{opportunityId} {
+      allow read, write: if isAuthenticated() && isOwner(userId);
+      
+      // Validate opportunity structure
+      allow create, update: if isAuthenticated() && isOwner(userId) &&
+        'title' in request.resource.data &&
+        'isActive' in request.resource.data &&
+        'addedAt' in request.resource.data &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.isActive is bool &&
+        isValidTimestamp(request.resource.data.addedAt);
+    }
+    
+    // Global opportunities/scholarships collection (read-only for users)
+    match /scholarships/{scholarshipId} {
+      allow read: if isAuthenticated();
+      // Only allow writes from admin/system accounts
+      allow write: if false;
+    }
+    
+    // User profiles
+    match /users/{userId} {
+      allow read, write: if isAuthenticated() && isOwner(userId);
+      
+      // Validate user profile structure
+      allow update: if isAuthenticated() && isOwner(userId) &&
+        // Ensure email doesn't change (handled by Auth)
+        (!('email' in request.resource.data) || request.resource.data.email == resource.data.email);
+    }
+    
+    // Analytics and aggregation collections (system-only)
+    match /analytics/{document=**} {
+      allow read: if false; // Only backend services can read
+      allow write: if false; // Only backend services can write
+    }
+    
+    // System collections for background processing
+    match /system/{document=**} {
+      allow read, write: if false; // Only backend services
+    }
+    
+    // Rate limiting for API calls
+    match /rateLimits/{userId} {
+      allow read: if isAuthenticated() && isOwner(userId);
+      allow write: if false; // Only backend can update rate limits
+    }
+    
+    // Notification preferences
+    match /notifications/{userId} {
+      allow read, write: if isAuthenticated() && isOwner(userId);
+    }
+    
+    // Chat conversations (if implementing chat feature)
+    match /conversations/{conversationId} {
+      allow read, write: if isAuthenticated() && 
+        request.auth.uid in resource.data.participants;
+    }
+    
+    // Default deny rule for all other documents
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+// Additional rules for Firebase Storage (if used for file uploads)
+// service firebase.storage {
+//   match /b/{bucket}/o {
+//     match /users/{userId}/{allPaths=**} {
+//       allow read, write: if request.auth != null && request.auth.uid == userId;
+//     }
+//   }
+// }
