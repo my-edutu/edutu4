@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, Check, User, BookOpen, Target, Clock, MapPin, MessageCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, User, BookOpen, Target, Clock, MapPin, MessageCircle, Loader2 } from 'lucide-react';
 import Button from './ui/Button';
 import Card from './ui/Card';
 import { useDarkMode } from '../hooks/useDarkMode';
 import { UserPreferences } from '../types/user';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '../config/firebase';
 
 interface OnboardingScreenProps {
   onComplete: (preferences: UserPreferences) => void;
+  onNavigate?: (screen: string) => void;
   userInfo: { name: string; age: number; uid: string };
 }
 
-const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete, userInfo }) => {
+const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete, onNavigate, userInfo }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const { isDarkMode } = useDarkMode();
@@ -88,12 +91,60 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete, userInf
 
   const handleComplete = async () => {
     setIsLoading(true);
-    const completePreferences: UserPreferences = {
-      ...preferences as UserPreferences,
-      completedAt: new Date(),
-      version: '1.0'
-    };
-    onComplete(completePreferences);
+    
+    try {
+      // Create complete preferences object
+      const completePreferences: UserPreferences = {
+        ...preferences as UserPreferences,
+        completedAt: new Date(),
+        version: '1.0'
+      };
+
+      // Save onboarding data to Firestore under users/{uid}/onboarding
+      const onboardingRef = doc(db, `users/${userInfo.uid}/onboarding`, 'preferences');
+      await setDoc(onboardingRef, completePreferences);
+
+      // Also update the main user document to mark onboarding as completed
+      const userRef = doc(db, 'users', userInfo.uid);
+      await setDoc(userRef, {
+        onboardingCompleted: true,
+        onboardingCompletedAt: new Date()
+      }, { merge: true });
+
+      console.log('✅ Onboarding data saved successfully to Firestore');
+      
+      // Call the onComplete callback
+      onComplete(completePreferences);
+      
+      // Redirect to dashboard
+      if (onNavigate) {
+        onNavigate('dashboard');
+      } else {
+        // Fallback: try to redirect via window location
+        window.location.hash = '#dashboard';
+      }
+      
+    } catch (error) {
+      console.error('❌ Error saving onboarding data:', error);
+      
+      // Even if saving fails, still complete onboarding and redirect
+      const completePreferences: UserPreferences = {
+        ...preferences as UserPreferences,
+        completedAt: new Date(),
+        version: '1.0'
+      };
+      
+      onComplete(completePreferences);
+      
+      // Redirect to dashboard anyway
+      if (onNavigate) {
+        onNavigate('dashboard');
+      } else {
+        window.location.hash = '#dashboard';
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const updatePreferences = (updates: Partial<UserPreferences>) => {
@@ -749,15 +800,74 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete, userInf
 
         {/* Navigation */}
         <div className="flex justify-between items-center">
-          <Button
-            variant="outline"
-            onClick={handlePrevious}
-            disabled={currentStep === 0}
-            className="flex items-center gap-2"
-          >
-            <ChevronLeft size={20} />
-            Previous
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={handlePrevious}
+              disabled={currentStep === 0}
+              icon={ChevronLeft}
+            >
+              Previous
+            </Button>
+            
+            {/* Skip Button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              loading={isLoading}
+              onClick={async () => {
+                setIsLoading(true);
+                try {
+                  // Update user document to mark onboarding as skipped but completed
+                  const userRef = doc(db, 'users', userInfo.uid);
+                  await setDoc(userRef, {
+                    onboardingCompleted: true,
+                    onboardingSkipped: true,
+                    onboardingCompletedAt: new Date()
+                  }, { merge: true });
+
+                  console.log('✅ Onboarding skipped successfully');
+                  
+                  // Complete onboarding with minimal preferences
+                  const skippedPreferences: UserPreferences = {
+                    version: '1.0',
+                    completedAt: new Date(),
+                    skipped: true,
+                    careerInterests: [],
+                    preferredIndustries: [],
+                    currentSkills: [],
+                    skillLevels: {},
+                    primaryGoals: [],
+                    motivationFactors: [],
+                    biggestChallenges: [],
+                    concerns: []
+                  } as UserPreferences;
+                  
+                  onComplete(skippedPreferences);
+                  
+                  // Redirect to dashboard
+                  if (onNavigate) {
+                    onNavigate('dashboard');
+                  } else {
+                    window.location.hash = '#dashboard';
+                  }
+                } catch (error) {
+                  console.error('❌ Error skipping onboarding:', error);
+                  // Still redirect even if saving fails
+                  if (onNavigate) {
+                    onNavigate('dashboard');
+                  } else {
+                    window.location.hash = '#dashboard';
+                  }
+                } finally {
+                  setIsLoading(false);
+                }
+              }}
+              disabled={isLoading}
+            >
+              {isLoading ? 'Skipping...' : 'Skip for now'}
+            </Button>
+          </div>
 
           <div className="flex space-x-2">
             {steps.map((_, index) => (
@@ -773,25 +883,21 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete, userInf
           <Button
             onClick={handleNext}
             disabled={!canProceed() || isLoading}
-            className="flex items-center gap-2"
+            variant="primary"
+            loading={currentStep === steps.length - 1 ? isLoading : false}
+            icon={currentStep === steps.length - 1 
+              ? (isLoading ? undefined : Check)
+              : undefined
+            }
+            rightIcon={currentStep === steps.length - 1 
+              ? undefined 
+              : ChevronRight
+            }
           >
             {currentStep === steps.length - 1 ? (
-              isLoading ? (
-                <>
-                  <Check size={20} className="animate-spin" />
-                  Completing...
-                </>
-              ) : (
-                <>
-                  <Check size={20} />
-                  Complete Setup
-                </>
-              )
+              isLoading ? 'Completing...' : 'Complete Setup'
             ) : (
-              <>
-                Next
-                <ChevronRight size={20} />
-              </>
+              'Next'
             )}
           </Button>
         </div>

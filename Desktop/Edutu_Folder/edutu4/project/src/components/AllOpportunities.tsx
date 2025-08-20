@@ -296,11 +296,10 @@ const AllOpportunities: React.FC<AllOpportunitiesProps> = ({ onBack, onSelectOpp
             <Button
               variant="secondary"
               onClick={handleBack}
-              className="btn-touch p-2 sm:p-3 flex-shrink-0"
+              size="md"
+              icon={ArrowLeft}
               aria-label="Go back to dashboard"
-            >
-              <ArrowLeft size={18} className="sm:w-5 sm:h-5" />
-            </Button>
+            />
             <div className="flex-1 min-w-0">
               <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-primary mb-1 truncate">
                 All Opportunities
@@ -332,11 +331,10 @@ const AllOpportunities: React.FC<AllOpportunitiesProps> = ({ onBack, onSelectOpp
               variant="secondary"
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className="btn-touch p-2 sm:p-3 flex-shrink-0"
+              size="md"
+              icon={RotateCcw}
               aria-label={isRefreshing ? 'Refreshing opportunities...' : 'Refresh opportunities'}
-            >
-              <RotateCcw size={16} className={`sm:w-5 sm:h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
-            </Button>
+            />
           </div>
 
           {/* Search */}
@@ -489,12 +487,11 @@ const AllOpportunities: React.FC<AllOpportunitiesProps> = ({ onBack, onSelectOpp
                         {onGetRoadmap && (
                           <Button
                             variant="outline"
-                            size="sm"
+                            size="xs"
                             onClick={(e) => {
                               e.stopPropagation();
                               onGetRoadmap(opportunity);
                             }}
-                            className="text-xs px-2 py-1 h-auto"
                           >
                             Get Roadmap
                           </Button>
@@ -525,10 +522,10 @@ const AllOpportunities: React.FC<AllOpportunitiesProps> = ({ onBack, onSelectOpp
                 variant="secondary"
                 onClick={() => goToPage(currentPage - 1)}
                 disabled={currentPage === 1}
-                className="btn-touch flex items-center gap-2 order-2 sm:order-1"
+                size="md"
+                icon={ChevronLeft}
                 aria-label="Go to previous page"
               >
-                <ChevronLeft size={16} />
                 <span className="hidden sm:inline">Previous</span>
                 <span className="sm:hidden">Prev</span>
               </Button>
@@ -547,7 +544,7 @@ const AllOpportunities: React.FC<AllOpportunitiesProps> = ({ onBack, onSelectOpp
                       key={page}
                       variant={page === currentPage ? "primary" : "secondary"}
                       onClick={() => goToPage(page)}
-                      className="btn-touch w-10 h-10 p-0 text-sm"
+                      size="sm"
                       aria-label={page === currentPage ? `Current page, page ${page}` : `Go to page ${page}`}
                       aria-current={page === currentPage ? 'page' : undefined}
                     >
@@ -562,12 +559,12 @@ const AllOpportunities: React.FC<AllOpportunitiesProps> = ({ onBack, onSelectOpp
                 variant="secondary"
                 onClick={() => goToPage(currentPage + 1)}
                 disabled={currentPage === totalPages}
-                className="btn-touch flex items-center gap-2 order-3"
+                size="md"
+                icon={ChevronRight}
                 aria-label="Go to next page"
               >
                 <span className="hidden sm:inline">Next</span>
                 <span className="sm:hidden">Next</span>
-                <ChevronRight size={16} />
               </Button>
             </div>
             

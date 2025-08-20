@@ -217,32 +217,32 @@ export const useTopOpportunities = (count: number = 3) => {
   const [opportunities, setOpportunities] = useState<OpportunityData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  useEffect(() => {
-    async function fetchOpportunities() {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        console.log(`📊 useTopOpportunities: Fetching ${count} opportunities...`);
-        
-        // Try API service first (which handles fallbacks internally)
-        const { getTopOpportunities } = await import('../services/apiService');
-        const apiOpportunities = await getTopOpportunities(count);
-        
-        if (apiOpportunities.length > 0) {
-          // Transform API data to OpportunityData format
-          const transformedOpportunities = apiOpportunities.map((opp, index) => ({
-            id: opp.id || `api_${index}`,
-            title: opp.title || '',
-            summary: opp.summary || opp.description || '',
-            provider: opp.provider || opp.organization || '',
-            deadline: opp.deadline || '',
-            imageUrl: opp.imageUrl || opp.image || '',
-            requirements: Array.isArray(opp.requirements) ? opp.requirements : [opp.requirements || ''],
-            benefits: Array.isArray(opp.benefits) ? opp.benefits : [opp.benefits || ''],
-            applicationProcess: Array.isArray(opp.applicationProcess) ? opp.applicationProcess : [opp.applicationProcess || ''],
-            link: opp.link || opp.url || '',
+  const fetchOpportunities = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log(`📊 useTopOpportunities: Fetching ${count} opportunities...`);
+      
+      // Try API service first (which handles fallbacks internally)
+      const { getTopOpportunities } = await import('../services/apiService');
+      const apiOpportunities = await getTopOpportunities(count);
+      
+      if (apiOpportunities.length > 0) {
+        // Transform API data to OpportunityData format
+        const transformedOpportunities = apiOpportunities.map((opp, index) => ({
+          id: opp.id || `api_${index}`,
+          title: opp.title || '',
+          summary: opp.summary || opp.description || '',
+          provider: opp.provider || opp.organization || '',
+          deadline: opp.deadline || '',
+          imageUrl: opp.imageUrl || opp.image || '',
+          requirements: Array.isArray(opp.requirements) ? opp.requirements : [opp.requirements || ''],
+          benefits: Array.isArray(opp.benefits) ? opp.benefits : [opp.benefits || ''],
+          applicationProcess: Array.isArray(opp.applicationProcess) ? opp.applicationProcess : [opp.applicationProcess || ''],
+          link: opp.link || opp.url || '',
             successRate: opp.successRate || 'Not specified',
             eligibility: Array.isArray(opp.eligibility) ? opp.eligibility : [opp.eligibility || ''],
             category: opp.category || 'General',
@@ -313,12 +313,18 @@ export const useTopOpportunities = (count: number = 3) => {
         setError('Failed to load opportunities. Please try again.');
         setLoading(false);
       }
-    }
+    }, [count, refreshTrigger]);
 
+  useEffect(() => {
     fetchOpportunities();
-  }, [count]);
+  }, [fetchOpportunities]);
 
-  return { opportunities, loading, error };
+  const refresh = useCallback(() => {
+    console.log('🔄 Refreshing opportunities...');
+    setRefreshTrigger(prev => prev + 1);
+  }, []);
+
+  return { opportunities, loading, error, refresh };
 };
 
 // Hook for single opportunity details

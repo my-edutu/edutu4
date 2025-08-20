@@ -43,6 +43,7 @@ export interface UserPreferences {
   // Preferences metadata
   completedAt: FirebaseTimestamp; // Firebase timestamp
   version: string; // For tracking preference schema changes
+  skipped?: boolean; // Whether onboarding was skipped
 }
 
 export interface OnboardingStep {

@@ -26,13 +26,15 @@ import SuccessStoryBlog from './components/SuccessStoryBlog';
 import MonthlyWeeklyRoadmap from './components/MonthlyWeeklyRoadmap';
 import GoalCreationFlow from './components/GoalCreationFlow';
 import GoalRoadmapView from './components/GoalRoadmapView';
+import AnimatedRoadmapView from './components/AnimatedRoadmapView';
 import AdminDashboard from './components/AdminDashboard';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 import PerformanceDashboard from './components/PerformanceDashboard';
 import CompactCookieConsentBanner from './components/CompactCookieConsentBanner';
-import DebugScreen from './components/DebugScreen';
+import OpportunityDiagnostics from './components/OpportunityDiagnostics';
 import { useDarkMode } from './hooks/useDarkMode';
 import { useGoals } from './hooks/useGoals';
+import { useAppRefresh } from './hooks/useAppRefresh';
 import { getSuccessStoryByOpportunity } from './data/successStories';
 import { SuccessStory } from './types/successStory';
 import { Opportunity, Goal, UserProfile, NavigationHandler } from './types/common';
@@ -40,7 +42,7 @@ import { secureStorage } from './utils/security';
 import { authService } from './services/authService';
 import { opportunityRefreshService } from './services/apiService';
 
-export type Screen = 'landing' | 'auth' | 'chat' | 'dashboard' | 'profile' | 'opportunity-detail' | 'all-opportunities' | 'roadmap' | 'opportunity-roadmap' | 'settings' | 'profile-edit' | 'notifications' | 'privacy' | 'help' | 'cv-management' | 'add-goal' | 'community-marketplace' | 'goals-page' | 'achievements' | 'roadmap-builder' | 'resources' | 'success-story' | 'monthly-weekly-roadmap' | 'goal-creation-flow' | 'goal-roadmap-view' | 'admin-dashboard';
+export type Screen = 'landing' | 'auth' | 'chat' | 'dashboard' | 'profile' | 'opportunity-detail' | 'all-opportunities' | 'roadmap' | 'opportunity-roadmap' | 'settings' | 'profile-edit' | 'notifications' | 'privacy' | 'help' | 'cv-management' | 'add-goal' | 'community-marketplace' | 'goals-page' | 'achievements' | 'roadmap-builder' | 'resources' | 'success-story' | 'monthly-weekly-roadmap' | 'goal-creation-flow' | 'goal-roadmap-view' | 'animated-roadmap-view' | 'admin-dashboard' | 'opportunity-diagnostics';
 
 export function App() {
   console.log('🎯 App component initializing...');
@@ -56,6 +58,7 @@ export function App() {
   const [isNavigating, setIsNavigating] = useState(false);
   const { isDarkMode } = useDarkMode();
   const { goals, updateTaskCompletion } = useGoals();
+  const { refreshCurrentScreen, forcePageRefresh } = useAppRefresh();
   
   console.log('🎯 App state:', { currentScreen, user: !!user, isDarkMode });
 
@@ -312,7 +315,7 @@ export function App() {
             );
           }
       case 'auth':
-        return <AuthFlow onComplete={handleAuthSuccess} />;
+        return <AuthFlow onComplete={handleAuthSuccess} onNavigate={handleNavigate} />;
       case 'chat':
         return <OptimizedChatInterface user={user} onBack={() => handleBack('dashboard')} />;
       case 'dashboard':
@@ -328,10 +331,10 @@ export function App() {
                 </p>
                 <div className="flex gap-3 justify-center">
                   <button 
-                    onClick={() => window.location.reload()} 
+                    onClick={() => refreshCurrentScreen(currentScreen)} 
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                   >
-                    Refresh Page
+                    Refresh Data
                   </button>
                   <button 
                     onClick={retry} 
@@ -478,12 +481,34 @@ export function App() {
             user={user}
           />
         );
+      case 'animated-roadmap-view':
+        if (selectedGoal) {
+          const goal = goals.find(g => g.id === selectedGoal);
+          if (goal) {
+            return (
+              <AnimatedRoadmapView
+                goal={goal}
+                onTaskToggle={updateTaskCompletion}
+                onBack={() => handleBack('goals-page')}
+                autoPlay={true}
+              />
+            );
+          }
+        }
+        return (
+          <div className="min-h-screen flex items-center justify-center">
+            <p>Goal not found</p>
+          </div>
+        );
       case 'goals-page':
         return (
           <GoalsPage
             onBack={() => handleBack('dashboard')}
             onAddGoal={handleAddGoal}
-            onGoalClick={handleGoalClick}
+            onGoalClick={(goalId) => {
+              setSelectedGoal(goalId);
+              setCurrentScreen('animated-roadmap-view');
+            }}
           />
         );
       case 'achievements':
@@ -560,6 +585,12 @@ export function App() {
             user={user}
           />
         );
+      case 'opportunity-diagnostics':
+        return (
+          <OpportunityDiagnostics
+            onBack={() => handleBack('dashboard')}
+          />
+        );
       default:
         console.log('⚠️ Unknown screen, defaulting to LandingPage:', currentScreen);
         return <LandingPage onGetStarted={() => handleGetStarted()} />;
@@ -611,10 +642,10 @@ export function App() {
                 </p>
                 <div className="flex gap-3 justify-center">
                   <button 
-                    onClick={() => window.location.reload()} 
+                    onClick={() => refreshCurrentScreen(currentScreen)} 
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                   >
-                    Refresh Page
+                    Refresh Data
                   </button>
                   <button 
                     onClick={retry} 

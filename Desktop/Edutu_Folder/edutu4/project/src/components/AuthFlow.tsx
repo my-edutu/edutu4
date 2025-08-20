@@ -6,9 +6,10 @@ import { UserPreferences } from '../types/user';
 
 interface AuthFlowProps {
   onComplete: (userData: { name: string; age: number; uid: string }) => void;
+  onNavigate?: (screen: string) => void;
 }
 
-const AuthFlow: React.FC<AuthFlowProps> = ({ onComplete }) => {
+const AuthFlow: React.FC<AuthFlowProps> = ({ onComplete, onNavigate }) => {
   const [authStep, setAuthStep] = useState<'auth' | 'onboarding' | 'complete'>('auth');
   const [userInfo, setUserInfo] = useState<{ 
     name: string; 
@@ -82,6 +83,7 @@ const AuthFlow: React.FC<AuthFlowProps> = ({ onComplete }) => {
     return (
       <OnboardingScreen 
         onComplete={handleOnboardingComplete}
+        onNavigate={onNavigate}
         userInfo={{
           name: userInfo.name,
           age: userInfo.age,

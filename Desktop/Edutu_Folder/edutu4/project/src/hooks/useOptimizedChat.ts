@@ -1,6 +1,24 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { enhancedChatService, type AIResponse, type ChatMessage } from '../services/enhancedChatService';
-import { robustChatService } from '../services/robustChatService';
+import { aiChatService as enhancedChatService } from '../services/aiChatService';
+
+// Define types to match the chat service
+interface AIResponse {
+  content: string;
+  buttons?: Array<{
+    text: string;
+    type: 'scholarship' | 'community' | 'expert' | 'link';
+    data?: any;
+  }>;
+  ragContext?: any;
+  streaming?: boolean;
+}
+
+interface ChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp?: Date;
+  ragContext?: any;
+}
 
 interface Message {
   id: string;

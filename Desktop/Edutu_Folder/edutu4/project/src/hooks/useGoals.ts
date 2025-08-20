@@ -146,12 +146,24 @@ export const useGoals = (filters?: GoalFilters): UseGoalsReturn => {
           console.error('❌ Real-time goals listener error:', err);
           retryCount.current += 1;
           
+          // Check if it's a permission error (user might be offline)
+          const isPermissionError = err.code === 'permission-denied';
+          const isNetworkError = err.code === 'unavailable' || err.message?.includes('network');
+          
+          if (isPermissionError) {
+            console.log('❌ Permission denied - user may need to re-authenticate');
+            setError('Authentication required. Please refresh the page.');
+            setLoading(false);
+            return;
+          }
+          
           if (retryCount.current < maxRetries) {
-            console.log(`🔄 Retrying real-time listener (${retryCount.current}/${maxRetries})...`);
-            setTimeout(() => setupRealTimeListener(), 2000 * retryCount.current);
+            const delay = isNetworkError ? 5000 : 2000 * retryCount.current;
+            console.log(`🔄 Retrying real-time listener (${retryCount.current}/${maxRetries}) in ${delay}ms...`);
+            setTimeout(() => setupRealTimeListener(), delay);
           } else {
             console.log('🔄 Max retries reached, falling back to manual fetch');
-            setError('Real-time updates temporarily unavailable');
+            setError('Real-time updates temporarily unavailable. Using cached data.');
             fetchGoals(true);
           }
         }
@@ -338,6 +350,14 @@ export const useGoals = (filters?: GoalFilters): UseGoalsReturn => {
       // Initialize activity tracker for dashboard sync
       activityTracker.initialize(user.uid);
       console.log('📊 Activity tracker initialized for dashboard sync');
+      
+      // Check for goal migration on first load
+      if (!hasInitialized) {
+        console.log('🔄 Checking for goal migration...');
+        goalsService.migrateUserGoals(user.uid).catch(err => {
+          console.warn('Migration check failed (this is normal for new users):', err);
+        });
+      }
       
       setupRealTimeListener();
     } else {

@@ -32,6 +32,9 @@ export interface UserData {
   uid: string;
   onboardingCompleted?: boolean;
   onboardingCompletedAt?: FirebaseTimestamp;
+  onboardingSkipped?: boolean;
+  hasSeenWelcome?: boolean;
+  welcomeCompletedAt?: FirebaseTimestamp;
 }
 
 export interface AuthError {

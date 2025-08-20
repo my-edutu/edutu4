@@ -506,8 +506,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onBack }) => {
               disabled={!input.trim() || isTyping}
               className="btn-touch p-2.5 sm:p-3 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
               aria-label="Send message"
+              icon={Send}
             >
-              <Send size={18} className="sm:w-5 sm:h-5" />
+              Send
             </Button>
           </div>
 

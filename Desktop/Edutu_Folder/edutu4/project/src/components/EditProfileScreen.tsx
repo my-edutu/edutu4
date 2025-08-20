@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
-import { ArrowLeft, User, Mail, Phone, MapPin, Calendar, Save, Camera } from 'lucide-react';
+import { ArrowLeft, User, Mail, Phone, MapPin, Calendar, Save, Camera, Sparkles, Settings } from 'lucide-react';
 import Button from './ui/Button';
 import Card from './ui/Card';
 import { useDarkMode } from '../hooks/useDarkMode';
+import IntroductionPopup from './IntroductionPopup';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '../config/firebase';
 
 interface EditProfileScreenProps {
-  user: { name: string; age: number } | null;
-  setUser: (user: { name: string; age: number } | null) => void;
+  user: { name: string; age: number; uid: string } | null;
+  setUser: (user: { name: string; age: number; uid: string } | null) => void;
   onBack: () => void;
 }
 
@@ -22,13 +25,38 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ user, setUser, on
     goals: 'Complete Python Course, Apply to Scholarships, Build Portfolio'
   });
 
+  const [showPreferencesPopup, setShowPreferencesPopup] = useState(false);
   const { isDarkMode } = useDarkMode();
 
   const handleSave = () => {
-    if (formData.name && formData.age) {
-      setUser({ name: formData.name, age: parseInt(formData.age) });
+    if (formData.name && formData.age && user) {
+      setUser({ name: formData.name, age: parseInt(formData.age), uid: user.uid });
       onBack();
     }
+  };
+
+  // Handle preferences popup completion
+  const handlePreferencesComplete = async (preferences: any) => {
+    if (!user?.uid) return;
+
+    try {
+      // Save the preferences to Firestore
+      if (Object.keys(preferences).length > 0) {
+        const preferencesRef = doc(db, `users/${user.uid}/onboarding`, 'preferences');
+        await setDoc(preferencesRef, {
+          ...preferences,
+          completedAt: new Date(),
+          version: '1.0',
+          completedViaProfile: true
+        });
+        
+        console.log('✅ Preferences saved successfully from profile');
+      }
+    } catch (error) {
+      console.error('❌ Error saving preferences from profile:', error);
+    }
+
+    setShowPreferencesPopup(false);
   };
 
   const scrollToTop = () => {
@@ -49,16 +77,19 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ user, setUser, on
             <Button
               variant="secondary"
               onClick={handleBack}
-              className="p-2 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
-            >
-              <ArrowLeft size={20} />
-            </Button>
+              size="md"
+              icon={ArrowLeft}
+            />
             <div className="flex-1">
               <h1 className="text-xl font-bold text-gray-800 dark:text-white">Edit Profile</h1>
               <p className="text-sm text-gray-600 dark:text-gray-400">Update your personal information</p>
             </div>
-            <Button onClick={handleSave} className="px-4 py-2">
-              <Save size={16} className="mr-2" />
+            <Button 
+              onClick={handleSave} 
+              variant="primary"
+              size="sm"
+              icon={Save}
+            >
               Save
             </Button>
           </div>
@@ -215,14 +246,50 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ user, setUser, on
           </div>
         </Card>
 
+        {/* Complete Profile Setup */}
+        <Card className="dark:bg-gray-800 dark:border-gray-700 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-800">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Sparkles size={28} className="text-white" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">Complete Your Profile</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Set up your detailed preferences to get personalized recommendations and opportunities tailored just for you.
+            </p>
+            <Button 
+              onClick={() => setShowPreferencesPopup(true)}
+              variant="primary"
+              size="md"
+              icon={Settings}
+            >
+              Complete Profile Setup
+            </Button>
+          </div>
+        </Card>
+
         {/* Save Button */}
         <div className="pt-4">
-          <Button onClick={handleSave} className="w-full" disabled={!formData.name || !formData.age}>
-            <Save size={16} className="mr-2" />
+          <Button 
+            onClick={handleSave} 
+            variant="primary"
+            size="lg"
+            fullWidth
+            disabled={!formData.name || !formData.age}
+            icon={Save}
+          >
             Save Changes
           </Button>
         </div>
       </div>
+
+      {/* Preferences Setup Popup */}
+      {user && (
+        <IntroductionPopup
+          isOpen={showPreferencesPopup}
+          onComplete={handlePreferencesComplete}
+          userName={user.name}
+        />
+      )}
     </div>
   );
 };

@@ -315,7 +315,11 @@ const MetricsOverview: React.FC<MetricsOverviewProps> = ({
           mt-4 flex items-center justify-center gap-4 text-xs
           ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}
         `}>
-          <span>Last updated: {metrics.lastUpdated ? new Date(metrics.lastUpdated.toDate()).toLocaleTimeString() : 'Just now'}</span>
+          <span>Last updated: {metrics.lastUpdated ? (
+            typeof metrics.lastUpdated.toDate === 'function' 
+              ? new Date(metrics.lastUpdated.toDate()).toLocaleTimeString()
+              : new Date(metrics.lastUpdated).toLocaleTimeString()
+          ) : 'Just now'}</span>
           
           {/* Streak Status */}
           {currentStreak > 0 && (

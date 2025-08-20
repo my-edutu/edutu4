@@ -379,18 +379,17 @@ const IntroductionPopup: React.FC<IntroductionPopupProps> = ({ isOpen, onComplet
               variant="secondary"
               onClick={handlePrevious}
               disabled={currentStep === 0}
-              className="flex items-center gap-2"
+              icon={ChevronLeft}
             >
-              <ChevronLeft size={16} />
               Previous
             </Button>
             <Button
               onClick={handleNext}
               disabled={!canProceed()}
-              className="flex items-center gap-2"
+              variant="primary"
+              rightIcon={currentStep === steps.length - 1 ? undefined : ChevronRight}
             >
               {currentStep === steps.length - 1 ? 'Get Started' : 'Next'}
-              <ChevronRight size={16} />
             </Button>
           </div>
         </div>

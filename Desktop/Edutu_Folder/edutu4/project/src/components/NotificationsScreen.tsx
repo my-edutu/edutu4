@@ -108,8 +108,9 @@ const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ onBack }) => 
               variant="secondary"
               onClick={handleBack}
               className="p-2 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+              icon={ArrowLeft}
             >
-              <ArrowLeft size={20} />
+              Back
             </Button>
             <div className="flex-1">
               <h1 className="text-xl font-bold text-gray-800 dark:text-white">Notifications</h1>
@@ -230,8 +231,7 @@ const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ onBack }) => 
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
               Send a test notification to make sure everything is working
             </p>
-            <Button className="inline-flex items-center gap-2">
-              <Bell size={16} />
+            <Button icon={Bell}>
               Send Test Notification
             </Button>
           </div>

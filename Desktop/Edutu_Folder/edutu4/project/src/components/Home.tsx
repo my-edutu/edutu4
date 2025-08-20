@@ -413,7 +413,7 @@ const Home: React.FC<HomeProps> = ({
                 <p className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'} mb-4`}>
                   {goalsError}
                 </p>
-                <Button onClick={() => window.location.reload()} variant="outline">
+                <Button onClick={refreshGoals} variant="outline" loading={goalsLoading}>
                   Retry
                 </Button>
               </div>

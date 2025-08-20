@@ -5,6 +5,7 @@ import Button from './ui/Button';
 import NotificationInbox from './NotificationInbox';
 import MetricsOverview from './MetricsOverview';
 import SuccessStories from './SuccessStories';
+import IntroductionPopup from './IntroductionPopup';
 import { useDarkMode } from '../hooks/useDarkMode';
 import { useGoals } from '../hooks/useGoals';
 import { opportunityRefreshService } from '../services/apiService';
@@ -15,9 +16,12 @@ import OpportunityList from './ui/OpportunityList';
 import { useGoalEvents } from '../utils/goalEvents';
 import GoalProgressTracker from './GoalProgressTracker';
 import DashboardDiagnostics from './DashboardDiagnostics';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from '../config/firebase';
+import { authService } from '../services/authService';
 
 interface DashboardProps {
-  user: { name: string; age: number } | null;
+  user: { name: string; age: number; uid: string } | null;
   onOpportunityClick: (opportunity: any) => void;
   onViewAllOpportunities: () => void;
   onGoalClick: (goalId: string) => void;
@@ -43,6 +47,79 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Temporarily remove status filter for debugging
   const { goals, loading: goalsLoading, createGoal, refreshGoals } = useGoals(); // { status: ['active'] }
   const [hasInitiallyLoaded, setHasInitiallyLoaded] = useState(false);
+  
+  // Welcome popup state
+  const [showWelcomePopup, setShowWelcomePopup] = useState(false);
+  const [isCheckingWelcomeStatus, setIsCheckingWelcomeStatus] = useState(true);
+
+  // Check if user should see welcome popup
+  useEffect(() => {
+    const checkWelcomeStatus = async () => {
+      if (!user?.uid) {
+        setIsCheckingWelcomeStatus(false);
+        return;
+      }
+
+      try {
+        // Check if user has seen the welcome popup or skipped onboarding
+        const userDoc = await authService.getUserDocument(user.uid);
+        
+        if (userDoc) {
+          // Show welcome popup if:
+          // 1. User skipped onboarding AND hasn't seen welcome popup
+          // 2. User has no preferences saved yet
+          const hasSkippedOnboarding = userDoc.onboardingCompleted && userDoc.onboardingSkipped;
+          const hasSeenWelcome = userDoc.hasSeenWelcome;
+          
+          // Check if user has preferences saved
+          const preferencesRef = doc(db, `users/${user.uid}/onboarding`, 'preferences');
+          const preferencesDoc = await getDoc(preferencesRef);
+          const hasPreferences = preferencesDoc.exists() && !preferencesDoc.data()?.skipped;
+          
+          if (hasSkippedOnboarding && !hasSeenWelcome && !hasPreferences) {
+            setShowWelcomePopup(true);
+          }
+        }
+      } catch (error) {
+        console.error('Error checking welcome status:', error);
+      } finally {
+        setIsCheckingWelcomeStatus(false);
+      }
+    };
+
+    checkWelcomeStatus();
+  }, [user?.uid]);
+
+  // Handle welcome popup completion
+  const handleWelcomeComplete = async (preferences: any) => {
+    if (!user?.uid) return;
+
+    try {
+      // Save the preferences to Firestore
+      if (Object.keys(preferences).length > 0) {
+        const preferencesRef = doc(db, `users/${user.uid}/onboarding`, 'preferences');
+        await setDoc(preferencesRef, {
+          ...preferences,
+          completedAt: new Date(),
+          version: '1.0',
+          completedViaWelcomePopup: true
+        });
+      }
+
+      // Mark that user has seen the welcome popup
+      const userRef = doc(db, 'users', user.uid);
+      await setDoc(userRef, {
+        hasSeenWelcome: true,
+        welcomeCompletedAt: new Date()
+      }, { merge: true });
+
+      console.log('✅ Welcome popup completed and preferences saved');
+    } catch (error) {
+      console.error('❌ Error saving welcome preferences:', error);
+    }
+
+    setShowWelcomePopup(false);
+  };
 
   // Transform goals into individual tasks for display
   const getDisplayTasks = () => {
@@ -223,7 +300,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   
   // Use the new hook for opportunities
-  const { opportunities, loading: opportunitiesLoading, error: opportunitiesError } = useTopOpportunities(3);
+  const { opportunities, loading: opportunitiesLoading, error: opportunitiesError, refresh: refreshOpportunities } = useTopOpportunities(3);
   const [hasNewOpportunities, setHasNewOpportunities] = useState(false);
 
   // Set hasNewOpportunities when opportunities are loaded
@@ -414,6 +491,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     { id: 'all-opportunities', label: 'All Opportunities', icon: <Sparkles size={20} /> },
     { id: 'mcp-dashboard', label: 'MCP Integration', icon: <Brain size={20} /> },
     { id: 'diagnostics', label: 'Sync Diagnostics', icon: <MessageCircle size={20} /> },
+    { id: 'opportunity-diagnostics', label: 'Opportunity Diagnostics', icon: <Sparkles size={20} /> },
     { id: 'community-marketplace', label: 'Community Roadmaps', icon: <Globe size={20} /> },
     { id: 'cv-management', label: 'CV Management', icon: <FileText size={20} /> },
     { id: 'add-goal', label: 'Add Goal', icon: <Plus size={20} /> },
@@ -644,8 +722,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                   <div className="flex flex-wrap gap-2">
                     <Button 
                       onClick={onAddGoal}
+                      variant="primary"
                       size="sm"
-                      icon={<Plus size={14} />}
+                      icon={Plus}
                     >
                       Add Goal
                     </Button>
@@ -653,7 +732,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                       onClick={onViewAllOpportunities}
                       variant="secondary"
                       size="sm"
-                      icon={<Globe size={14} />}
+                      icon={Globe}
                     >
                       Browse Opportunities
                     </Button>
@@ -810,10 +889,11 @@ const Dashboard: React.FC<DashboardProps> = ({
               e.stopPropagation();
               onNavigate && onNavigate('roadmap-builder');
             }}
+            variant="primary"
             size="sm"
-            className="w-full bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700"
+            fullWidth
+            icon={Plus}
           >
-            <Plus size={14} />
             Start Building
           </Button>
         </Card>
@@ -836,6 +916,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               variant="secondary" 
               size="sm"
               onClick={onViewAllOpportunities}
+              rightIcon={ChevronRight}
             >
               View All
             </Button>
@@ -852,10 +933,19 @@ const Dashboard: React.FC<DashboardProps> = ({
               <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-800'} mb-2`}>Connection Error</h3>
               <p className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'} mb-4`}>{opportunitiesError}</p>
               <div className="flex gap-2 justify-center">
-                <Button onClick={() => window.location.reload()} variant="outline" size="sm">
-                  Refresh Page
+                <Button 
+                  onClick={refreshOpportunities} 
+                  variant="outline" 
+                  size="sm"
+                  loading={opportunitiesLoading}
+                >
+                  Refresh Data
                 </Button>
-                <Button onClick={onViewAllOpportunities} variant="primary" size="sm">
+                <Button 
+                  onClick={onViewAllOpportunities} 
+                  variant="primary" 
+                  size="sm"
+                >
                   Try Again
                 </Button>
               </div>
@@ -865,7 +955,11 @@ const Dashboard: React.FC<DashboardProps> = ({
               <div className="text-4xl mb-4">🔍</div>
               <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-800'} mb-2`}>No opportunities yet</h3>
               <p className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'} mb-4`}>Our AI is currently discovering new opportunities for you.</p>
-              <Button onClick={onViewAllOpportunities} variant="outline" size="sm">
+              <Button 
+                onClick={onViewAllOpportunities} 
+                variant="outline" 
+                size="sm"
+              >
                 Check Back Later
               </Button>
             </div>
@@ -909,10 +1003,11 @@ const Dashboard: React.FC<DashboardProps> = ({
               e.stopPropagation();
               handleCVManagement();
             }}
+            variant="primary"
             size="sm"
-            className="w-full"
+            fullWidth
+            icon={FileText}
           >
-            <FileText size={14} />
             Open CV Tools
           </Button>
         </Card>
@@ -942,10 +1037,11 @@ const Dashboard: React.FC<DashboardProps> = ({
               e.stopPropagation();
               handleCommunityMarketplace();
             }}
+            variant="primary"
             size="sm"
-            className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700"
+            fullWidth
+            icon={Globe}
           >
-            <Globe size={14} />
             Browse Roadmaps
           </Button>
         </Card>
@@ -957,7 +1053,12 @@ const Dashboard: React.FC<DashboardProps> = ({
               <TrendingUp size={20} className="text-accent" />
               <h2 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Recent Achievements</h2>
             </div>
-            <Button variant="secondary" className={`${isDarkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 border-gray-600' : 'bg-white text-gray-700 hover:bg-gray-50 border-gray-200'} text-sm px-3 py-1`} onClick={handleViewMoreAchievements}>
+            <Button 
+              variant="secondary" 
+              size="sm"
+              onClick={handleViewMoreAchievements}
+              rightIcon={ChevronRight}
+            >
               View All
             </Button>
           </div>
@@ -1005,7 +1106,9 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
             <Button
               onClick={() => setShowStreakPopup(false)}
-              className="w-full"
+              variant="primary"
+              size="lg"
+              fullWidth
             >
               Keep Going! 💪
             </Button>
@@ -1029,6 +1132,15 @@ const Dashboard: React.FC<DashboardProps> = ({
         <div 
           className="fixed inset-0 z-40 bg-black/20" 
           onClick={() => setShowMenu(false)}
+        />
+      )}
+
+      {/* Welcome Popup for new users who skipped onboarding */}
+      {user && !isCheckingWelcomeStatus && (
+        <IntroductionPopup
+          isOpen={showWelcomePopup}
+          onComplete={handleWelcomeComplete}
+          userName={user.name}
         />
       )}
     </div>

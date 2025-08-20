@@ -959,7 +959,9 @@ const AddGoalScreen: React.FC<AddGoalScreenProps> = ({ onBack, onGoalCreated, on
           <Button
             onClick={handleCustomGoalSubmit}
             disabled={!customGoal.title || !customGoal.description || !customGoal.category}
-            className="w-full"
+            variant="primary"
+            size="lg"
+            fullWidth
           >
             Continue to Details
           </Button>
@@ -1109,10 +1111,12 @@ const AddGoalScreen: React.FC<AddGoalScreenProps> = ({ onBack, onGoalCreated, on
       ) : (
         <Button 
           onClick={handleGoalCreate} 
-          className="w-full"
+          variant="primary"
+          size="lg"
+          fullWidth
           disabled={isCreating}
+          icon={Target}
         >
-          <Target size={16} className="mr-2" />
           Create My Goal
         </Button>
       )}
@@ -1250,26 +1254,19 @@ const AddGoalScreen: React.FC<AddGoalScreenProps> = ({ onBack, onGoalCreated, on
           <Button
             onClick={handleAddToMyGoals}
             disabled={isAddingToGoals}
-            className="flex-1 bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            variant="primary"
+            size="lg"
+            loading={isAddingToGoals}
+            icon={isAddingToGoals ? undefined : Trophy}
           >
-            {isAddingToGoals ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                Creating Goal...
-              </>
-            ) : (
-              <>
-                <Trophy size={16} className="mr-2" />
-                Add to My Goals & Start Tracking
-              </>
-            )}
+            {isAddingToGoals ? 'Creating Goal...' : 'Add to My Goals & Start Tracking'}
           </Button>
           <Button
             variant="outline"
             onClick={handleEditGoal}
-            className="flex-1"
+            size="lg"
+            icon={ArrowLeft}
           >
-            <ArrowLeft size={16} className="mr-2" />
             Edit Goal Details
           </Button>
         </div>
@@ -1286,10 +1283,9 @@ const AddGoalScreen: React.FC<AddGoalScreenProps> = ({ onBack, onGoalCreated, on
             <Button
               variant="secondary"
               onClick={handleBack}
-              className="p-2 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
-            >
-              <ArrowLeft size={20} />
-            </Button>
+              size="md"
+              icon={ArrowLeft}
+            />
             <div className="flex-1">
               <h1 className="text-xl font-bold text-gray-800 dark:text-white">Add New Goal</h1>
               <p className="text-sm text-gray-600 dark:text-gray-400">

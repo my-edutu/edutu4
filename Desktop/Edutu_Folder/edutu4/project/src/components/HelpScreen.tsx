@@ -98,8 +98,9 @@ const HelpScreen: React.FC<HelpScreenProps> = ({ onBack }) => {
               variant="secondary"
               onClick={handleBack}
               className="p-2 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+              icon={ArrowLeft}
             >
-              <ArrowLeft size={20} />
+              Back
             </Button>
             <div className="flex-1">
               <h1 className="text-xl font-bold text-gray-800 dark:text-white">Help & Support</h1>

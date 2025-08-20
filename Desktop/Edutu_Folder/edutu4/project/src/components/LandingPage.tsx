@@ -135,10 +135,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted }) => {
                 <Button 
                   onClick={onGetStarted} 
                   size="lg" 
-                  className="animate-pulse-glow flex items-center gap-2 text-lg px-8 py-4 font-semibold shadow-lg hover:shadow-xl"
+                  className="animate-pulse-glow text-lg px-8 py-4 font-semibold shadow-lg hover:shadow-xl"
+                  icon={ArrowRight}
                 >
                   Get Started Free
-                  <ArrowRight size={20} />
                 </Button>
                 <div className={`flex items-center gap-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                   <CheckCircle size={16} className="text-green-500" />
